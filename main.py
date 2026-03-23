@@ -2,6 +2,12 @@ import requests
 import time
 
 # =========================
+# TELEGRAM (EN DUR)
+# =========================
+TELEGRAM_TOKEN = "8564707764:AAF71P-mG0_7QRqughHRINDCRlO0JcoRCqo"
+CHAT_ID = "-5147137068"
+
+# =========================
 # CONFIG WALLETS
 # =========================
 wallets = [
