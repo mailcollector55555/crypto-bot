@@ -113,7 +113,7 @@ def get_telegram_updates():
     global LAST_UPDATE_ID
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-    params = {"timeout": 5}
+    params = {"timeout": 60}
 
     if LAST_UPDATE_ID is not None:
         params["offset"] = LAST_UPDATE_ID + 1
