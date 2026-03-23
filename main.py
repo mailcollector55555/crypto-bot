@@ -1,6 +1,9 @@
 import requests
 import time
-import os
+
+# ===== CONFIG TELEGRAM =====
+TELEGRAM_TOKEN = "8564707764:AAF71P-mG0_7QRqughHRINDCRlO0JcoRCqo"
+CHAT_ID = "-5147137068"
 
 # ===== CONFIG WALLETS =====
 wallets = [
@@ -26,25 +29,14 @@ wallets = [
     }
 ]
 
-# ===== VARIABLES RAILWAY =====
-TELEGRAM_TOKEN = "8564707764:AAF71P-mG0_7QRqughHRINDCRlO0JcoRCqo"
-CHAT_ID = "-5147137068"
-
 USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+LAST_UPDATE_ID = None
 
 
 def send_telegram(msg: str) -> None:
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("Telegram non configuré : TELEGRAM_TOKEN ou CHAT_ID manquant")
-        return
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(
-            url,
-            data={"chat_id": CHAT_ID, "text": msg},
-            timeout=15
-        )
+        r = requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=15)
         print("Telegram status:", r.status_code)
         print("Telegram response:", r.text)
     except Exception as e:
@@ -92,12 +84,8 @@ def short_addr(addr: str) -> str:
     return f"{addr[:6]}...{addr[-6:]}"
 
 
-def send_startup_report():
-    lines = [
-        "🚀 Bot démarré",
-        "",
-        "📊 Position actuelle des wallets :"
-    ]
+def build_positions_report() -> str:
+    lines = ["📊 Position actuelle des wallets :", ""]
 
     for wallet in wallets:
         try:
@@ -114,7 +102,57 @@ def send_startup_report():
                 f'Erreur lecture: {e}\n'
             )
 
-    send_telegram("\n".join(lines))
+    return "\n".join(lines)
+
+
+def send_startup_report():
+    send_telegram(build_positions_report())
+
+
+def get_telegram_updates():
+    global LAST_UPDATE_ID
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    params = {"timeout": 5}
+
+    if LAST_UPDATE_ID is not None:
+        params["offset"] = LAST_UPDATE_ID + 1
+
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        data = r.json()
+        if data.get("ok"):
+            return data.get("result", [])
+    except Exception as e:
+        print("Erreur getUpdates:", e)
+
+    return []
+
+
+def handle_telegram_commands():
+    global LAST_UPDATE_ID
+
+    updates = get_telegram_updates()
+
+    for update in updates:
+        LAST_UPDATE_ID = update["update_id"]
+
+        message = update.get("message", {})
+        text = message.get("text", "")
+        chat_id = str(message.get("chat", {}).get("id", ""))
+
+        if chat_id != str(CHAT_ID):
+            continue
+
+        if text in ["/start", "/help"]:
+            send_telegram(
+                "Commandes disponibles :\n"
+                "/positions - voir la position des wallets\n"
+                "/wallets - voir la position des wallets"
+            )
+
+        elif text in ["/positions", "/wallets"]:
+            send_telegram(build_positions_report())
 
 
 def main():
@@ -129,15 +167,19 @@ def main():
             tx = get_latest_usdt_incoming(wallet["address"])
             last_seen[wallet["address"]] = tx["hash"] if tx else None
         except Exception as e:
-            print(f"Erreur init sur {wallet['name']}:", e)
+            print(f"Erreur init sur {wallet['name']}: {e}")
             last_seen[wallet["address"]] = None
 
-    # Rapport de démarrage avec positions + soldes
+    # Rapport démarrage
     send_startup_report()
 
     while True:
         print("Check wallets...")
 
+        # Gestion des commandes Telegram
+        handle_telegram_commands()
+
+        # Monitoring crédits
         for wallet in wallets:
             address = wallet["address"]
 
