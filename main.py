@@ -1,11 +1,9 @@
 import requests
 import time
 
-# ===== CONFIG TELEGRAM =====
-TELEGRAM_TOKEN = "8564707764:AAF71P-mG0_7QRqughHRINDCRlO0JcoRCqo"
-CHAT_ID = "-5147137068"
-
-# ===== CONFIG WALLETS =====
+# =========================
+# CONFIG WALLETS
+# =========================
 wallets = [
     {
         "position": 1,
@@ -33,93 +31,34 @@ USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 LAST_UPDATE_ID = None
 
 
+# =========================
+# TELEGRAM
+# =========================
 def send_telegram(msg: str) -> None:
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=15)
+        r = requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "text": msg},
+            timeout=15
+        )
         print("Telegram status:", r.status_code)
         print("Telegram response:", r.text)
     except Exception as e:
         print("Erreur envoi Telegram:", e)
 
 
-def get_usdt_balance(address: str) -> float:
-    url = f"https://apilist.tronscanapi.com/api/account?address={address}"
-    r = requests.get(url, timeout=20)
-    r.raise_for_status()
-    data = r.json()
-
-    for token in data.get("trc20token_balances", []):
-        if token.get("tokenId") == USDT_CONTRACT or token.get("tokenAbbr") == "USDT":
-            return int(token.get("balance", 0)) / 1_000_000
-
-    return 0.0
-
-
-def get_latest_usdt_incoming(address: str):
-    url = f"https://apilist.tronscanapi.com/api/transaction?address={address}&limit=20&start=0&sort=-timestamp"
-
-    try:
-        r = requests.get(url, timeout=20)
-        data = r.json()
-        txs = data.get("data", [])
-
-        for tx in txs:
-            if tx.get("tokenName") == "Tether USD" and tx.get("toAddress") == address:
-                return {
-                    "hash": tx.get("hash"),
-                    "amount": int(tx.get("amount", 0)) / 1_000_000,
-                    "from": tx.get("ownerAddress")
-                }
-
-    except Exception as e:
-        print(f"Erreur API sur {address}:", e)
-
-    return None
-
-
-def short_addr(addr: str) -> str:
-    if not addr or len(addr) < 12:
-        return str(addr)
-    return f"{addr[:6]}...{addr[-6:]}"
-
-
-def build_positions_report() -> str:
-    lines = ["📊 Position actuelle des wallets :", ""]
-
-    for wallet in wallets:
-        try:
-            balance = get_usdt_balance(wallet["address"])
-            lines.append(
-                f'#{wallet["position"]} - {wallet["name"]}\n'
-                f'Adresse: {wallet["address"]}\n'
-                f'Solde: {balance:.2f} USDT\n'
-            )
-        except Exception as e:
-            lines.append(
-                f'#{wallet["position"]} - {wallet["name"]}\n'
-                f'Adresse: {wallet["address"]}\n'
-                f'Erreur lecture: {e}\n'
-            )
-
-    return "\n".join(lines)
-
-
-def send_startup_report():
-    send_telegram(build_positions_report())
-
-
 def get_telegram_updates():
     global LAST_UPDATE_ID
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-    params = {"timeout": 60}
+    params = {"timeout": 10}
 
     if LAST_UPDATE_ID is not None:
         params["offset"] = LAST_UPDATE_ID + 1
 
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, timeout=15)
         data = r.json()
         if data.get("ok"):
             return data.get("result", [])
@@ -155,6 +94,100 @@ def handle_telegram_commands():
             send_telegram(build_positions_report())
 
 
+# =========================
+# API TRONSCAN
+# =========================
+def get_usdt_balance(address: str) -> float:
+    url = f"https://apilist.tronscanapi.com/api/account?address={address}"
+
+    try:
+        r = requests.get(url, timeout=20)
+
+        if r.status_code == 429:
+            print(f"Rate limit balance sur {address}, pause 10s...")
+            time.sleep(10)
+            return 0.0
+
+        r.raise_for_status()
+        data = r.json()
+
+        for token in data.get("trc20token_balances", []):
+            if token.get("tokenId") == USDT_CONTRACT or token.get("tokenAbbr") == "USDT":
+                return int(token.get("balance", 0)) / 1_000_000
+
+    except Exception as e:
+        print(f"Erreur balance sur {address}: {e}")
+
+    return 0.0
+
+
+def get_latest_usdt_incoming(address: str):
+    url = f"https://apilist.tronscanapi.com/api/transaction?address={address}&limit=20&start=0&sort=-timestamp"
+
+    try:
+        r = requests.get(url, timeout=20)
+
+        if r.status_code == 429:
+            print(f"Rate limit tx sur {address}, pause 10s...")
+            time.sleep(10)
+            return None
+
+        r.raise_for_status()
+        data = r.json()
+        txs = data.get("data", [])
+
+        for tx in txs:
+            if tx.get("tokenName") == "Tether USD" and tx.get("toAddress") == address:
+                return {
+                    "hash": tx.get("hash"),
+                    "amount": int(tx.get("amount", 0)) / 1_000_000,
+                    "from": tx.get("ownerAddress")
+                }
+
+    except Exception as e:
+        print(f"Erreur API sur {address}: {e}")
+
+    return None
+
+
+# =========================
+# UTILS
+# =========================
+def short_addr(addr: str) -> str:
+    if not addr or len(addr) < 12:
+        return str(addr)
+    return f"{addr[:6]}...{addr[-6:]}"
+
+
+def build_positions_report() -> str:
+    lines = ["📊 Position actuelle des wallets :", ""]
+
+    for wallet in wallets:
+        try:
+            balance = get_usdt_balance(wallet["address"])
+            lines.append(
+                f'#{wallet["position"]} - {wallet["name"]}\n'
+                f'Adresse: {wallet["address"]}\n'
+                f'Solde: {balance:.2f} USDT\n'
+            )
+            time.sleep(2)
+        except Exception as e:
+            lines.append(
+                f'#{wallet["position"]} - {wallet["name"]}\n'
+                f'Adresse: {wallet["address"]}\n'
+                f'Erreur lecture: {e}\n'
+            )
+
+    return "\n".join(lines)
+
+
+def send_startup_report():
+    send_telegram(build_positions_report())
+
+
+# =========================
+# MAIN
+# =========================
 def main():
     last_seen = {}
 
@@ -166,21 +199,23 @@ def main():
         try:
             tx = get_latest_usdt_incoming(wallet["address"])
             last_seen[wallet["address"]] = tx["hash"] if tx else None
+            time.sleep(2)
         except Exception as e:
             print(f"Erreur init sur {wallet['name']}: {e}")
             last_seen[wallet["address"]] = None
 
-    # Rapport démarrage
+    # Rapport de démarrage
     send_startup_report()
 
     while True:
         print("Check wallets...")
 
-        # Gestion des commandes Telegram
+        # Commandes Telegram
         handle_telegram_commands()
 
-        # Monitoring crédits
+        # Monitoring des crédits
         for wallet in wallets:
+            time.sleep(2)
             address = wallet["address"]
 
             try:
@@ -216,7 +251,7 @@ def main():
             except Exception as e:
                 print(f"Erreur sur {wallet['name']} ({address}): {e}")
 
-        time.sleep(30)
+        time.sleep(60)
 
 
 if __name__ == "__main__":
