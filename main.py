@@ -115,6 +115,7 @@ def main():
     send_startup_report()
 
     print("🚀 Bot lancé et monitoring actif...")
+    send_telegram("✅ Bot démarré avec succès")
 
     while True:
         for wallet in wallets:
