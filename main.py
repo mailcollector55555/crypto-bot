@@ -50,32 +50,25 @@ def get_usdt_balance(address: str) -> float:
     return 0.0
 
 
-def get_latest_usdt_incoming(address: str):
-    url = (
-        "https://apilist.tronscanapi.com/api/transaction/trc20"
-        f"?limit=20&start=0&sort=-timestamp&count=true&address={address}"
-    )
-    r = requests.get(url, timeout=20)
-    r.raise_for_status()
-    data = r.json()
+def get_latest_usdt_incoming(address):
+    url = f"https://apilist.tronscanapi.com/api/transaction?address={address}&limit=20&start=0&sort=-timestamp"
 
-    txs = data.get("data", [])
-    for tx in txs:
-        token_info = tx.get("tokenInfo", {})
-        is_usdt = (
-            token_info.get("tokenId") == USDT_CONTRACT
-            or token_info.get("tokenAbbr") == "USDT"
-        )
-        to_address = tx.get("to")
-        confirmed = tx.get("confirmed", False)
+    try:
+        r = requests.get(url, timeout=20)
+        data = r.json()
 
-        if is_usdt and to_address == address and confirmed:
-            return {
-                "hash": tx.get("transaction_id"),
-                "amount": int(tx.get("quant", 0)) / 1_000_000,
-                "from": tx.get("from"),
-                "timestamp": tx.get("block_ts")
-            }
+        txs = data.get("data", [])
+
+        for tx in txs:
+            if tx.get("tokenName") == "Tether USD" and tx.get("toAddress") == address:
+                return {
+                    "hash": tx.get("hash"),
+                    "amount": int(tx.get("amount", 0)) / 1_000_000,
+                    "from": tx.get("ownerAddress")
+                }
+
+    except Exception as e:
+        print("Erreur API:", e)
 
     return None
 
