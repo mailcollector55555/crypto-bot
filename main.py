@@ -26,15 +26,29 @@ wallets = [
     }
 ]
 
-TELEGRAM_TOKEN = os.getenv("8564707764:AAF71P-mG0_7QRqughHRINDCRlO0JcoRCqo")
-CHAT_ID = os.getenv("-5147137068")
+# ===== VARIABLES RAILWAY =====
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 
 
 def send_telegram(msg: str) -> None:
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("Telegram non configuré : TELEGRAM_TOKEN ou CHAT_ID manquant")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=15)
+    try:
+        r = requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "text": msg},
+            timeout=15
+        )
+        print("Telegram status:", r.status_code)
+        print("Telegram response:", r.text)
+    except Exception as e:
+        print("Erreur envoi Telegram:", e)
 
 
 def get_usdt_balance(address: str) -> float:
@@ -50,13 +64,12 @@ def get_usdt_balance(address: str) -> float:
     return 0.0
 
 
-def get_latest_usdt_incoming(address):
+def get_latest_usdt_incoming(address: str):
     url = f"https://apilist.tronscanapi.com/api/transaction?address={address}&limit=20&start=0&sort=-timestamp"
 
     try:
         r = requests.get(url, timeout=20)
         data = r.json()
-
         txs = data.get("data", [])
 
         for tx in txs:
@@ -68,19 +81,23 @@ def get_latest_usdt_incoming(address):
                 }
 
     except Exception as e:
-        print("Erreur API:", e)
+        print(f"Erreur API sur {address}:", e)
 
     return None
 
 
 def short_addr(addr: str) -> str:
     if not addr or len(addr) < 12:
-        return addr
+        return str(addr)
     return f"{addr[:6]}...{addr[-6:]}"
 
 
 def send_startup_report():
-    lines = ["🚀 Bot démarré", "", "📊 Position actuelle des wallets :"]
+    lines = [
+        "🚀 Bot démarré",
+        "",
+        "📊 Position actuelle des wallets :"
+    ]
 
     for wallet in wallets:
         try:
@@ -103,21 +120,24 @@ def send_startup_report():
 def main():
     last_seen = {}
 
-    # Initialisation
+    print("🚀 Bot lancé et monitoring actif...")
+    send_telegram("✅ Test Telegram OK - bot démarré avec succès")
+
+    # Initialisation des dernières transactions connues
     for wallet in wallets:
         try:
             tx = get_latest_usdt_incoming(wallet["address"])
             last_seen[wallet["address"]] = tx["hash"] if tx else None
-        except Exception:
+        except Exception as e:
+            print(f"Erreur init sur {wallet['name']}:", e)
             last_seen[wallet["address"]] = None
 
-    # Message au démarrage
+    # Rapport de démarrage avec positions + soldes
     send_startup_report()
 
-    print("🚀 Bot lancé et monitoring actif...")
-    send_telegram("✅ Bot démarré avec succès")
-
     while True:
+        print("Check wallets...")
+
         for wallet in wallets:
             address = wallet["address"]
 
