@@ -27,7 +27,7 @@ wallets = [
 ]
 
 TELEGRAM_TOKEN = os.getenv("8564707764:AAF71P-mG0_7QRqughHRINDCRlO0JcoRCqo")
-CHAT_ID = os.getenv("8393689976")
+CHAT_ID = os.getenv("-5147137068")
 
 USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 
